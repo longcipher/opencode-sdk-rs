@@ -2,7 +2,6 @@
 
 [![Crates.io](https://img.shields.io/crates/v/opencode-sdk-rs)](https://crates.io/crates/opencode-sdk-rs)
 [![Documentation](https://docs.rs/opencode-sdk-rs/badge.svg)](https://docs.rs/opencode-sdk-rs)
-[![License](https://img.shields.io/crates/l/opencode-sdk-rs)](LICENSE)
 
 A Rust client library for the [OpenCode](https://opencode.ai) API, providing type-safe access to all endpoints with automatic retries, SSE streaming, and structured error handling.
 
