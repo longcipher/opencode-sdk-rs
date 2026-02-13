@@ -1,0 +1,22 @@
+[package]
+name = "opencode-sdk-rs"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bytes.workspace = true
+futures-core.workspace = true
+hpx = { workspace = true, features = ["rustls-tls", "json", "query", "stream"] }
+http.workspace = true
+pin-project-lite.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "macros", "time"] }
+tracing.workspace = true
+
+[dev-dependencies]
+wiremock = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,46 @@
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+[workspace.dependencies]
+# Serialization
+serde = "1.0.228"
+serde_json = "1.0.149"
+
+# Error handling
+thiserror = "2.0.18"
+
+# Async runtime
+futures-core = "0.3.31"
+tokio = "1.49.0"
+
+# HTTP
+hpx = "1.3.0"
+http = "1.4.0"
+
+# Streaming
+bytes = "1.11.1"
+pin-project-lite = "0.2"
+
+# Observability
+tracing = "0.1.44"
+
+# Testing
+wiremock = "0.6"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+cast_possible_truncation = "allow"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"

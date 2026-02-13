@@ -1,0 +1,5 @@
+[files]
+extend-exclude = ["specs/**"]
+
+[default]
+extend-ignore-re = ["hel"]
