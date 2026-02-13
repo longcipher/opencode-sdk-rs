@@ -1,5 +1,7 @@
 # OpenCode SDK for Rust
 
+[![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/longcipher/opencode-sdk-rs)
+[![Context7](https://img.shields.io/badge/Website-context7.com-blue)](https://context7.com/longcipher/opencode-sdk-rs)
 [![Crates.io](https://img.shields.io/crates/v/opencode-sdk-rs)](https://crates.io/crates/opencode-sdk-rs)
 [![Documentation](https://docs.rs/opencode-sdk-rs/badge.svg)](https://docs.rs/opencode-sdk-rs)
 
