@@ -98,27 +98,34 @@ pub struct UserMessageTime {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AssistantMessage {
     /// Unique message identifier.
+    #[serde(default)]
     pub id: String,
     /// Monetary cost of generating this message.
+    #[serde(default)]
     pub cost: f64,
     /// The mode used for generation.
+    #[serde(default)]
     pub mode: String,
     /// The model identifier used.
-    #[serde(rename = "modelID")]
+    #[serde(rename = "modelID", default)]
     pub model_id: String,
     /// Filesystem paths relevant to this message.
+    #[serde(default)]
     pub path: AssistantMessagePath,
     /// The provider identifier used.
-    #[serde(rename = "providerID")]
+    #[serde(rename = "providerID", default)]
     pub provider_id: String,
     /// The session this message belongs to.
-    #[serde(rename = "sessionID")]
+    #[serde(rename = "sessionID", default)]
     pub session_id: String,
     /// System prompt segments.
+    #[serde(default)]
     pub system: Vec<String>,
     /// Timing information.
+    #[serde(default)]
     pub time: AssistantMessageTime,
     /// Token usage breakdown.
+    #[serde(default)]
     pub tokens: AssistantMessageTokens,
     /// Optional error that occurred during generation.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -129,18 +136,21 @@ pub struct AssistantMessage {
 }
 
 /// Filesystem paths for an [`AssistantMessage`].
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct AssistantMessagePath {
     /// Current working directory.
+    #[serde(default)]
     pub cwd: String,
     /// Project root directory.
+    #[serde(default)]
     pub root: String,
 }
 
 /// Timing information for an [`AssistantMessage`].
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct AssistantMessageTime {
     /// Epoch timestamp when the message was created.
+    #[serde(default)]
     pub created: f64,
     /// Epoch timestamp when generation completed.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -148,24 +158,30 @@ pub struct AssistantMessageTime {
 }
 
 /// Token usage breakdown for an [`AssistantMessage`].
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct AssistantMessageTokens {
     /// Cache token details.
+    #[serde(default)]
     pub cache: TokenCache,
     /// Number of input tokens.
+    #[serde(default)]
     pub input: u64,
     /// Number of output tokens.
+    #[serde(default)]
     pub output: u64,
     /// Number of reasoning tokens.
+    #[serde(default)]
     pub reasoning: u64,
 }
 
 /// Cache token breakdown.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct TokenCache {
     /// Number of tokens read from cache.
+    #[serde(default)]
     pub read: u64,
     /// Number of tokens written to cache.
+    #[serde(default)]
     pub write: u64,
 }
 
@@ -359,6 +375,9 @@ pub enum Part {
     /// A file patch.
     #[serde(rename = "patch")]
     Patch(PatchPart),
+    /// Any unknown part variant returned by newer server versions.
+    #[serde(other)]
+    Unknown,
 }
 
 // ---------------------------------------------------------------------------
@@ -733,7 +752,7 @@ impl<'a> SessionResource<'a> {
         id: &str,
         params: &SessionChatParams,
         options: Option<&RequestOptions>,
-    ) -> Result<AssistantMessage, OpencodeError> {
+    ) -> Result<SessionMessagesResponseItem, OpencodeError> {
         self.client.post(&format!("/session/{id}/message"), Some(params), options).await
     }
 

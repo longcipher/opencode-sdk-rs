@@ -134,6 +134,84 @@ async fn test_session_delete() {
     assert!(result);
 }
 
+#[tokio::test]
+async fn test_session_chat_accepts_missing_assistant_fields() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/session/sess-1/message"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "info": {
+                "role": "assistant",
+                "sessionID": "sess-1",
+                "time": { "created": 123.0 },
+                "tokens": { "cache": { "read": 0, "write": 0 }, "input": 0, "output": 0, "reasoning": 0 }
+            },
+            "parts": []
+        })))
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let params = opencode_sdk_rs::resources::session::SessionChatParams {
+        model_id: "gpt-4o".to_owned(),
+        parts: vec![],
+        provider_id: "openai".to_owned(),
+        message_id: None,
+        mode: None,
+        system: None,
+        tools: None,
+    };
+
+    let resp = client.session().chat("sess-1", &params, None).await.unwrap();
+    match resp.info {
+        opencode_sdk_rs::resources::session::Message::Assistant(msg) => {
+            assert_eq!(msg.id, "");
+            assert_eq!(msg.cost, 0.0);
+            assert_eq!(msg.mode, "");
+        }
+        _ => panic!("expected assistant message"),
+    }
+}
+
+#[tokio::test]
+async fn test_session_chat_accepts_unknown_part_variant() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/session/sess-1/message"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "info": {
+                "role": "assistant",
+                "id": "msg-1",
+                "cost": 0.0,
+                "mode": "code",
+                "modelID": "gpt-4o",
+                "providerID": "openai",
+                "sessionID": "sess-1",
+                "path": { "cwd": ".", "root": "." },
+                "system": [],
+                "time": { "created": 123.0 },
+                "tokens": { "cache": { "read": 0, "write": 0 }, "input": 0, "output": 0, "reasoning": 0 }
+            },
+            "parts": [{ "type": "reasoning", "id": "p-1", "text": "thinking..." }]
+        })))
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let params = opencode_sdk_rs::resources::session::SessionChatParams {
+        model_id: "gpt-4o".to_owned(),
+        parts: vec![],
+        provider_id: "openai".to_owned(),
+        message_id: None,
+        mode: None,
+        system: None,
+        tools: None,
+    };
+
+    let resp = client.session().chat("sess-1", &params, None).await.unwrap();
+    assert_eq!(resp.parts.len(), 1);
+}
+
 // ---------------------------------------------------------------------------
 // File
 // ---------------------------------------------------------------------------
