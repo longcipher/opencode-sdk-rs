@@ -115,6 +115,12 @@ This ensures ALL user-added content survives re-initialization — not just `## 
 ## Conventions
 - Commit style: conventional commits
 - Branch strategy: feature branches
+- **Agent Harness Rules (Strict):**
+  1. **No Blind Edits:** Always read a file before editing it. Never assume file contents.
+  2. **Verify Imports:** Check `pyproject.toml` or `package.json` before importing third-party libs.
+  3. **Idempotency:** Scripts and tests should be safe to run multiple times.
+  4. **Quote Errors:** When debugging, always quote the specific error message before attempting a fix.
+  5. **Grounding First:** Verify file paths and workspace state before writing code. Use `ls` / `find` / file search.
 
 ## Active Specs
 <list of specs/<feature> directories with dynamic status, or "No active specs found.">

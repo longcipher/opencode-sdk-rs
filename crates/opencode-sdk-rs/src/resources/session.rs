@@ -19,6 +19,15 @@ use crate::{
 pub struct Session {
     /// Unique session identifier.
     pub id: String,
+    /// URL-friendly session slug.
+    #[serde(default)]
+    pub slug: String,
+    /// Project identifier.
+    #[serde(rename = "projectID", default)]
+    pub project_id: String,
+    /// Working directory for this session.
+    #[serde(default)]
+    pub directory: String,
     /// Timing information.
     pub time: SessionTime,
     /// Human-readable session title.
@@ -35,6 +44,12 @@ pub struct Session {
     /// Share metadata, if the session was shared.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub share: Option<SessionShare>,
+    /// Summary of changes in this session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<SessionSummary>,
+    /// Permission rules for this session.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permission: Option<PermissionRuleset>,
 }
 
 /// Timing information for a [`Session`].
@@ -44,6 +59,12 @@ pub struct SessionTime {
     pub created: f64,
     /// Epoch timestamp when the session was last updated.
     pub updated: f64,
+    /// Epoch timestamp when compaction started.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compacting: Option<f64>,
+    /// Epoch timestamp when the session was archived.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub archived: Option<f64>,
 }
 
 /// Revert metadata attached to a [`Session`].
@@ -71,6 +92,115 @@ pub struct SessionShare {
     pub url: String,
 }
 
+/// Status of a file diff.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum FileDiffStatus {
+    /// File was added.
+    Added,
+    /// File was deleted.
+    Deleted,
+    /// File was modified.
+    Modified,
+}
+
+/// A file diff within a session summary.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FileDiff {
+    /// The file path.
+    pub file: String,
+    /// Content before the change.
+    pub before: String,
+    /// Content after the change.
+    pub after: String,
+    /// Number of added lines.
+    pub additions: f64,
+    /// Number of deleted lines.
+    pub deletions: f64,
+    /// Optional diff status.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<FileDiffStatus>,
+}
+
+/// Summary of changes in a session.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SessionSummary {
+    /// Number of additions.
+    pub additions: f64,
+    /// Number of deletions.
+    pub deletions: f64,
+    /// Number of files changed.
+    pub files: f64,
+    /// Optional list of file diffs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diffs: Option<Vec<FileDiff>>,
+}
+
+/// A permission rule governing tool access.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PermissionRule {
+    /// The permission name.
+    pub permission: String,
+    /// Glob pattern for matching.
+    pub pattern: String,
+    /// Action to take (use string for flexibility with `PermissionAction`).
+    pub action: String,
+}
+
+/// A set of permission rules.
+pub type PermissionRuleset = Vec<PermissionRule>;
+
+// ---------------------------------------------------------------------------
+// Output Format
+// ---------------------------------------------------------------------------
+
+/// Output format specification — text or JSON schema.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type")]
+pub enum OutputFormat {
+    /// Plain text output.
+    #[serde(rename = "text")]
+    Text,
+    /// JSON schema output.
+    #[serde(rename = "json_schema")]
+    JsonSchema {
+        /// The JSON schema.
+        schema: serde_json::Value,
+        /// Number of retries for structured output.
+        #[serde(rename = "retryCount", skip_serializing_if = "Option::is_none")]
+        retry_count: Option<u64>,
+    },
+}
+
+// ---------------------------------------------------------------------------
+// User Message Supporting Types
+// ---------------------------------------------------------------------------
+
+/// Summary information for a user message.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct UserMessageSummary {
+    /// Optional summary title.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Optional summary body.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body: Option<String>,
+    /// File diffs.
+    pub diffs: Vec<FileDiff>,
+}
+
+/// Model information for a user message.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct UserMessageModel {
+    /// Provider identifier.
+    #[serde(rename = "providerID")]
+    pub provider_id: String,
+    /// Model identifier.
+    #[serde(rename = "modelID")]
+    pub model_id: String,
+}
+
 // ---------------------------------------------------------------------------
 // Messages
 // ---------------------------------------------------------------------------
@@ -85,6 +215,27 @@ pub struct UserMessage {
     pub session_id: String,
     /// Timing information.
     pub time: UserMessageTime,
+    /// Agent name.
+    #[serde(default)]
+    pub agent: String,
+    /// Model information.
+    #[serde(default)]
+    pub model: UserMessageModel,
+    /// Output format specification.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<OutputFormat>,
+    /// Summary information.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<UserMessageSummary>,
+    /// System prompt.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system: Option<String>,
+    /// Map of tool names to enabled state.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<HashMap<String, bool>>,
+    /// Variant identifier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub variant: Option<String>,
 }
 
 /// Timing information for a [`UserMessage`].
@@ -118,8 +269,14 @@ pub struct AssistantMessage {
     /// The session this message belongs to.
     #[serde(rename = "sessionID", default)]
     pub session_id: String,
-    /// System prompt segments.
+    /// Parent message identifier.
+    #[serde(rename = "parentID", default)]
+    pub parent_id: String,
+    /// Agent name.
     #[serde(default)]
+    pub agent: String,
+    /// System prompt segments (not in `OpenAPI` spec, kept for backward compatibility).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub system: Vec<String>,
     /// Timing information.
     #[serde(default)]
@@ -133,6 +290,15 @@ pub struct AssistantMessage {
     /// Whether this message is a summary.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<bool>,
+    /// Variant identifier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub variant: Option<String>,
+    /// Finish reason.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finish: Option<String>,
+    /// Structured output data.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub structured: Option<serde_json::Value>,
 }
 
 /// Filesystem paths for an [`AssistantMessage`].
@@ -172,6 +338,9 @@ pub struct AssistantMessageTokens {
     /// Number of reasoning tokens.
     #[serde(default)]
     pub reasoning: u64,
+    /// Total number of tokens.
+    #[serde(default)]
+    pub total: u64,
 }
 
 /// Cache token breakdown.
@@ -191,7 +360,7 @@ pub struct TokenCache {
 pub enum Message {
     /// A user-sent message.
     #[serde(rename = "user")]
-    User(UserMessage),
+    User(Box<UserMessage>),
     /// An assistant-generated message.
     #[serde(rename = "assistant")]
     Assistant(Box<AssistantMessage>),
@@ -350,6 +519,142 @@ pub struct PatchPart {
     pub session_id: String,
 }
 
+/// A subtask delegation part within a message.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SubtaskPart {
+    /// Unique part identifier.
+    pub id: String,
+    /// The session this part belongs to.
+    #[serde(rename = "sessionID")]
+    pub session_id: String,
+    /// The message this part belongs to.
+    #[serde(rename = "messageID")]
+    pub message_id: String,
+    /// The prompt for the subtask.
+    pub prompt: String,
+    /// Human-readable description of the subtask.
+    pub description: String,
+    /// The agent handling this subtask.
+    pub agent: String,
+    /// Optional model information.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<SubtaskPartModel>,
+    /// Optional command to run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+}
+
+/// Model information for a [`SubtaskPart`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SubtaskPartModel {
+    /// Provider identifier.
+    #[serde(rename = "providerID")]
+    pub provider_id: String,
+    /// Model identifier.
+    #[serde(rename = "modelID")]
+    pub model_id: String,
+}
+
+/// A reasoning/thinking step part within a message.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ReasoningPart {
+    /// Unique part identifier.
+    pub id: String,
+    /// The session this part belongs to.
+    #[serde(rename = "sessionID")]
+    pub session_id: String,
+    /// The message this part belongs to.
+    #[serde(rename = "messageID")]
+    pub message_id: String,
+    /// The reasoning text content.
+    pub text: String,
+    /// Optional metadata.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<HashMap<String, serde_json::Value>>,
+    /// Timing information.
+    pub time: ReasoningPartTime,
+}
+
+/// Timing information for a [`ReasoningPart`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ReasoningPartTime {
+    /// Epoch timestamp when reasoning started.
+    pub start: f64,
+    /// Epoch timestamp when reasoning ended.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end: Option<f64>,
+}
+
+/// An agent delegation part within a message.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AgentPart {
+    /// Unique part identifier.
+    pub id: String,
+    /// The session this part belongs to.
+    #[serde(rename = "sessionID")]
+    pub session_id: String,
+    /// The message this part belongs to.
+    #[serde(rename = "messageID")]
+    pub message_id: String,
+    /// The name of the agent.
+    pub name: String,
+    /// Optional source information.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<AgentPartSource>,
+}
+
+/// Source information for an [`AgentPart`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AgentPartSource {
+    /// The source value.
+    pub value: String,
+    /// Start offset.
+    pub start: i64,
+    /// End offset.
+    pub end: i64,
+}
+
+/// A compaction marker part within a message.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CompactionPart {
+    /// Unique part identifier.
+    pub id: String,
+    /// The session this part belongs to.
+    #[serde(rename = "sessionID")]
+    pub session_id: String,
+    /// The message this part belongs to.
+    #[serde(rename = "messageID")]
+    pub message_id: String,
+    /// Whether this compaction was automatic.
+    pub auto: bool,
+}
+
+/// A retry part within a message, indicating a failed attempt.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RetryPart {
+    /// Unique part identifier.
+    pub id: String,
+    /// The session this part belongs to.
+    #[serde(rename = "sessionID")]
+    pub session_id: String,
+    /// The message this part belongs to.
+    #[serde(rename = "messageID")]
+    pub message_id: String,
+    /// The attempt number.
+    pub attempt: f64,
+    /// The error that occurred.
+    pub error: serde_json::Value,
+    /// Timing information.
+    pub time: RetryPartTime,
+}
+
+/// Timing information for a [`RetryPart`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RetryPartTime {
+    /// Epoch timestamp when the retry was created.
+    pub created: f64,
+}
+
 /// A part within a message — discriminated by `type`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type")]
@@ -375,6 +680,21 @@ pub enum Part {
     /// A file patch.
     #[serde(rename = "patch")]
     Patch(PatchPart),
+    /// A subtask delegation.
+    #[serde(rename = "subtask")]
+    Subtask(SubtaskPart),
+    /// A reasoning/thinking step.
+    #[serde(rename = "reasoning")]
+    Reasoning(ReasoningPart),
+    /// An agent delegation.
+    #[serde(rename = "agent")]
+    Agent(AgentPart),
+    /// A compaction marker.
+    #[serde(rename = "compaction")]
+    Compaction(CompactionPart),
+    /// A retry attempt.
+    #[serde(rename = "retry")]
+    Retry(RetryPart),
     /// Any unknown part variant returned by newer server versions.
     #[serde(other)]
     Unknown,
@@ -557,9 +877,15 @@ pub struct TextPartInput {
     /// Whether this input was synthetically generated.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub synthetic: Option<bool>,
+    /// Whether this input should be ignored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ignored: Option<bool>,
     /// Optional timing information.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub time: Option<TextPartInputTime>,
+    /// Optional metadata.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
 
 /// Timing information for a [`TextPartInput`].
@@ -590,7 +916,40 @@ pub struct FilePartInput {
     pub source: Option<FilePartSource>,
 }
 
-/// An input part — either text or file — discriminated by `type`.
+/// An agent input part for the chat endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AgentPartInput {
+    /// Agent name.
+    pub name: String,
+    /// Optional part identifier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Optional source information.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<AgentPartSource>,
+}
+
+/// A subtask input part for the chat endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SubtaskPartInput {
+    /// The prompt text.
+    pub prompt: String,
+    /// Description of the subtask.
+    pub description: String,
+    /// Agent to handle the subtask.
+    pub agent: String,
+    /// Optional part identifier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Optional model selection.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<SessionChatModel>,
+    /// Optional command.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+}
+
+/// An input part — text, file, agent, or subtask — discriminated by `type`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type")]
 pub enum PartInput {
@@ -600,6 +959,12 @@ pub enum PartInput {
     /// A file input.
     #[serde(rename = "file")]
     File(FilePartInput),
+    /// An agent delegation input.
+    #[serde(rename = "agent")]
+    Agent(AgentPartInput),
+    /// A subtask delegation input.
+    #[serde(rename = "subtask")]
+    Subtask(SubtaskPartInput),
 }
 
 // ---------------------------------------------------------------------------
@@ -637,27 +1002,45 @@ pub type SessionSummarizeResponse = bool;
 // Param Types
 // ---------------------------------------------------------------------------
 
+/// Model selection for the chat endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SessionChatModel {
+    /// Provider identifier.
+    #[serde(rename = "providerID")]
+    pub provider_id: String,
+    /// Model identifier.
+    #[serde(rename = "modelID")]
+    pub model_id: String,
+}
+
 /// Parameters for the chat endpoint (`POST /session/{id}/message`).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SessionChatParams {
-    /// The model to use.
-    #[serde(rename = "modelID")]
-    pub model_id: String,
-    /// Input parts (text and/or file).
+    /// Input parts (text, file, agent, subtask).
     pub parts: Vec<PartInput>,
-    /// The provider to use.
-    #[serde(rename = "providerID")]
-    pub provider_id: String,
+    /// Optional model selection (nested providerID + modelID).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<SessionChatModel>,
     /// Optional message identifier for continuing a conversation.
     #[serde(rename = "messageID")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message_id: Option<String>,
-    /// Optional mode override.
+    /// Optional agent override.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub mode: Option<String>,
+    pub agent: Option<String>,
+    /// Whether to suppress the reply.
+    #[serde(rename = "noReply")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub no_reply: Option<bool>,
+    /// Optional output format.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<OutputFormat>,
     /// Optional system prompt override.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system: Option<String>,
+    /// Optional variant.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub variant: Option<String>,
     /// Optional map of tool names to their enabled state.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<HashMap<String, bool>>,
@@ -839,7 +1222,15 @@ mod tests {
     fn session_full_round_trip() {
         let session = Session {
             id: "sess_001".into(),
-            time: SessionTime { created: 1_700_000_000.0, updated: 1_700_001_000.0 },
+            slug: "my-session".into(),
+            project_id: "proj_001".into(),
+            directory: "/home/user/project".into(),
+            time: SessionTime {
+                created: 1_700_000_000.0,
+                updated: 1_700_001_000.0,
+                compacting: None,
+                archived: None,
+            },
             title: "My Session".into(),
             version: "1".into(),
             parent_id: Some("sess_000".into()),
@@ -850,6 +1241,8 @@ mod tests {
                 snapshot: Some("snapshot_data".into()),
             }),
             share: Some(SessionShare { url: "https://example.com/share/abc".into() }),
+            summary: None,
+            permission: None,
         };
         let json_str = serde_json::to_string(&session).unwrap();
         assert!(json_str.contains("parentID"));
@@ -863,12 +1256,22 @@ mod tests {
     fn session_minimal_round_trip() {
         let session = Session {
             id: "sess_002".into(),
-            time: SessionTime { created: 1_700_000_000.0, updated: 1_700_000_000.0 },
+            slug: "empty".into(),
+            project_id: "proj_002".into(),
+            directory: "/tmp".into(),
+            time: SessionTime {
+                created: 1_700_000_000.0,
+                updated: 1_700_000_000.0,
+                compacting: None,
+                archived: None,
+            },
             title: "Empty".into(),
             version: "1".into(),
             parent_id: None,
             revert: None,
             share: None,
+            summary: None,
+            permission: None,
         };
         let json_str = serde_json::to_string(&session).unwrap();
         assert!(!json_str.contains("parentID"));
@@ -886,9 +1289,19 @@ mod tests {
             id: "msg_u001".into(),
             session_id: "sess_001".into(),
             time: UserMessageTime { created: 1_700_000_100.0 },
+            agent: "coder".into(),
+            model: UserMessageModel { provider_id: "openai".into(), model_id: "gpt-4o".into() },
+            format: None,
+            summary: None,
+            system: None,
+            tools: None,
+            variant: None,
         };
         let json_str = serde_json::to_string(&msg).unwrap();
         assert!(json_str.contains("sessionID"));
+        assert!(json_str.contains("agent"));
+        assert!(json_str.contains("providerID"));
+        assert!(json_str.contains("modelID"));
         let back: UserMessage = serde_json::from_str(&json_str).unwrap();
         assert_eq!(msg, back);
     }
@@ -906,6 +1319,8 @@ mod tests {
             },
             provider_id: "openai".into(),
             session_id: "sess_001".into(),
+            parent_id: "msg_parent".into(),
+            agent: "default".into(),
             system: vec!["You are a helpful assistant.".into()],
             time: AssistantMessageTime {
                 created: 1_700_000_200.0,
@@ -916,14 +1331,20 @@ mod tests {
                 input: 500,
                 output: 200,
                 reasoning: 0,
+                total: 700,
             },
             error: None,
             summary: None,
+            variant: None,
+            finish: None,
+            structured: None,
         };
         let json_str = serde_json::to_string(&msg).unwrap();
         assert!(json_str.contains("modelID"));
         assert!(json_str.contains("providerID"));
         assert!(json_str.contains("sessionID"));
+        assert!(json_str.contains("parentID"));
+        assert!(json_str.contains("agent"));
         let back: AssistantMessage = serde_json::from_str(&json_str).unwrap();
         assert_eq!(msg, back);
     }
@@ -938,6 +1359,8 @@ mod tests {
             path: AssistantMessagePath { cwd: "/tmp".into(), root: "/tmp".into() },
             provider_id: "openai".into(),
             session_id: "sess_001".into(),
+            parent_id: "msg_parent".into(),
+            agent: "coder".into(),
             system: vec![],
             time: AssistantMessageTime { created: 1_700_000_300.0, completed: None },
             tokens: AssistantMessageTokens {
@@ -945,6 +1368,7 @@ mod tests {
                 input: 0,
                 output: 0,
                 reasoning: 0,
+                total: 0,
             },
             error: Some(SessionError::ProviderAuthError {
                 data: super::super::shared::ProviderAuthErrorData {
@@ -953,6 +1377,9 @@ mod tests {
                 },
             }),
             summary: Some(true),
+            variant: None,
+            finish: None,
+            structured: None,
         };
         let json_str = serde_json::to_string(&msg).unwrap();
         assert!(json_str.contains("ProviderAuthError"));
@@ -964,11 +1391,18 @@ mod tests {
 
     #[test]
     fn message_enum_user_variant() {
-        let msg = Message::User(UserMessage {
+        let msg = Message::User(Box::new(UserMessage {
             id: "msg_u002".into(),
             session_id: "sess_001".into(),
             time: UserMessageTime { created: 1_700_000_100.0 },
-        });
+            agent: "coder".into(),
+            model: UserMessageModel { provider_id: "openai".into(), model_id: "gpt-4o".into() },
+            format: None,
+            summary: None,
+            system: None,
+            tools: None,
+            variant: None,
+        }));
         let json_str = serde_json::to_string(&msg).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
         assert_eq!(v["role"], "user");
@@ -986,6 +1420,8 @@ mod tests {
             path: AssistantMessagePath { cwd: "/home".into(), root: "/home".into() },
             provider_id: "anthropic".into(),
             session_id: "sess_002".into(),
+            parent_id: "msg_a002".into(),
+            agent: "reviewer".into(),
             system: vec![],
             time: AssistantMessageTime {
                 created: 1_700_000_500.0,
@@ -996,9 +1432,13 @@ mod tests {
                 input: 100,
                 output: 50,
                 reasoning: 20,
+                total: 170,
             },
             error: None,
             summary: None,
+            variant: None,
+            finish: None,
+            structured: None,
         }));
         let json_str = serde_json::to_string(&msg).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
@@ -1234,13 +1674,14 @@ mod tests {
     #[test]
     fn session_chat_params_full_round_trip() {
         let params = SessionChatParams {
-            model_id: "gpt-4o".into(),
             parts: vec![
                 PartInput::Text(TextPartInput {
                     text: "Hello!".into(),
                     id: Some("input_001".into()),
                     synthetic: None,
+                    ignored: None,
                     time: Some(TextPartInputTime { start: 1_700_000_000.0, end: None }),
+                    metadata: None,
                 }),
                 PartInput::File(FilePartInput {
                     mime: "text/plain".into(),
@@ -1250,10 +1691,16 @@ mod tests {
                     source: None,
                 }),
             ],
-            provider_id: "openai".into(),
+            model: Some(SessionChatModel {
+                provider_id: "openai".into(),
+                model_id: "gpt-4o".into(),
+            }),
             message_id: Some("msg_001".into()),
-            mode: Some("code".into()),
+            agent: None,
+            no_reply: None,
+            format: None,
             system: Some("Be concise.".into()),
+            variant: None,
             tools: Some(HashMap::from([("bash".into(), true)])),
         };
         let json_str = serde_json::to_string(&params).unwrap();
@@ -1267,22 +1714,26 @@ mod tests {
     #[test]
     fn session_chat_params_minimal() {
         let params = SessionChatParams {
-            model_id: "gpt-4o".into(),
             parts: vec![PartInput::Text(TextPartInput {
                 text: "Hi".into(),
                 id: None,
                 synthetic: None,
+                ignored: None,
                 time: None,
+                metadata: None,
             })],
-            provider_id: "openai".into(),
+            model: None,
             message_id: None,
-            mode: None,
+            agent: None,
+            no_reply: None,
+            format: None,
             system: None,
+            variant: None,
             tools: None,
         };
         let json_str = serde_json::to_string(&params).unwrap();
         assert!(!json_str.contains("messageID"));
-        assert!(!json_str.contains("\"mode\""));
+        assert!(!json_str.contains("model"));
         assert!(!json_str.contains("system"));
         assert!(!json_str.contains("tools"));
         let back: SessionChatParams = serde_json::from_str(&json_str).unwrap();
@@ -1297,7 +1748,9 @@ mod tests {
             text: "Hello".into(),
             id: None,
             synthetic: Some(true),
+            ignored: None,
             time: None,
+            metadata: None,
         });
         let json_str = serde_json::to_string(&input).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
@@ -1330,11 +1783,18 @@ mod tests {
     #[test]
     fn session_messages_response_item_round_trip() {
         let item = SessionMessagesResponseItem {
-            info: Message::User(UserMessage {
+            info: Message::User(Box::new(UserMessage {
                 id: "msg_u010".into(),
                 session_id: "sess_001".into(),
                 time: UserMessageTime { created: 1_700_000_000.0 },
-            }),
+                agent: "coder".into(),
+                model: UserMessageModel { provider_id: "openai".into(), model_id: "gpt-4o".into() },
+                format: None,
+                summary: None,
+                system: None,
+                tools: None,
+                variant: None,
+            })),
             parts: vec![Part::Text(TextPart {
                 id: "p_010".into(),
                 message_id: "msg_u010".into(),
@@ -1528,6 +1988,8 @@ mod tests {
             path: AssistantMessagePath { cwd: "/app".into(), root: "/app".into() },
             provider_id: "openai".into(),
             session_id: "sess_edge".into(),
+            parent_id: "msg_prev".into(),
+            agent: "planner".into(),
             system: vec![],
             time: AssistantMessageTime { created: 1_700_000_000.0, completed: None },
             tokens: AssistantMessageTokens {
@@ -1535,13 +1997,21 @@ mod tests {
                 input: 10,
                 output: 5,
                 reasoning: 0,
+                total: 15,
             },
             error: None,
             summary: None,
+            variant: None,
+            finish: None,
+            structured: None,
         };
         let json_str = serde_json::to_string(&msg).unwrap();
         assert!(!json_str.contains("error"));
         assert!(!json_str.contains("summary"));
+        assert!(!json_str.contains("variant"));
+        assert!(!json_str.contains("finish"));
+        assert!(!json_str.contains("structured"));
+        assert!(!json_str.contains("system"));
         let back: AssistantMessage = serde_json::from_str(&json_str).unwrap();
         assert_eq!(msg, back);
     }
@@ -1552,12 +2022,16 @@ mod tests {
             text: "hi".into(),
             id: None,
             synthetic: None,
+            ignored: None,
             time: None,
+            metadata: None,
         });
         let json_str = serde_json::to_string(&input).unwrap();
         assert!(!json_str.contains("\"id\""));
         assert!(!json_str.contains("synthetic"));
+        assert!(!json_str.contains("ignored"));
         assert!(!json_str.contains("time"));
+        assert!(!json_str.contains("metadata"));
         let back: PartInput = serde_json::from_str(&json_str).unwrap();
         assert_eq!(input, back);
     }
@@ -1651,5 +2125,605 @@ mod tests {
         assert_eq!(v["source"]["type"], "symbol");
         let back: Part = serde_json::from_str(&json_str).unwrap();
         assert_eq!(part, back);
+    }
+
+    // -- New type round-trips --
+
+    #[test]
+    fn session_summary_round_trip() {
+        let summary = SessionSummary {
+            additions: 10.0,
+            deletions: 3.0,
+            files: 2.0,
+            diffs: Some(vec![FileDiff {
+                file: "src/main.rs".into(),
+                before: "fn old() {}".into(),
+                after: "fn new() {}".into(),
+                additions: 5.0,
+                deletions: 2.0,
+                status: Some(FileDiffStatus::Modified),
+            }]),
+        };
+        let json_str = serde_json::to_string(&summary).unwrap();
+        assert!(json_str.contains("\"status\":\"modified\""));
+        let back: SessionSummary = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(summary, back);
+    }
+
+    #[test]
+    fn session_summary_minimal() {
+        let summary = SessionSummary { additions: 0.0, deletions: 0.0, files: 0.0, diffs: None };
+        let json_str = serde_json::to_string(&summary).unwrap();
+        assert!(!json_str.contains("diffs"));
+        let back: SessionSummary = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(summary, back);
+    }
+
+    #[test]
+    fn file_diff_round_trip() {
+        let diff = FileDiff {
+            file: "README.md".into(),
+            before: "# Old".into(),
+            after: "# New".into(),
+            additions: 1.0,
+            deletions: 1.0,
+            status: Some(FileDiffStatus::Modified),
+        };
+        let json_str = serde_json::to_string(&diff).unwrap();
+        let back: FileDiff = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(diff, back);
+    }
+
+    #[test]
+    fn file_diff_no_status() {
+        let diff = FileDiff {
+            file: "new.rs".into(),
+            before: String::new(),
+            after: "fn main() {}".into(),
+            additions: 1.0,
+            deletions: 0.0,
+            status: None,
+        };
+        let json_str = serde_json::to_string(&diff).unwrap();
+        assert!(!json_str.contains("status"));
+        let back: FileDiff = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(diff, back);
+    }
+
+    #[test]
+    fn file_diff_status_variants() {
+        for (variant, expected) in [
+            (FileDiffStatus::Added, "\"added\""),
+            (FileDiffStatus::Deleted, "\"deleted\""),
+            (FileDiffStatus::Modified, "\"modified\""),
+        ] {
+            let json_str = serde_json::to_string(&variant).unwrap();
+            assert_eq!(json_str, expected);
+            let back: FileDiffStatus = serde_json::from_str(&json_str).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn permission_rule_round_trip() {
+        let rule = PermissionRule {
+            permission: "file:write".into(),
+            pattern: "src/**".into(),
+            action: "allow".into(),
+        };
+        let json_str = serde_json::to_string(&rule).unwrap();
+        let back: PermissionRule = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(rule, back);
+    }
+
+    #[test]
+    fn permission_ruleset_round_trip() {
+        let ruleset: PermissionRuleset = vec![
+            PermissionRule {
+                permission: "file:write".into(),
+                pattern: "src/**".into(),
+                action: "allow".into(),
+            },
+            PermissionRule {
+                permission: "file:read".into(),
+                pattern: "**".into(),
+                action: "deny".into(),
+            },
+        ];
+        let json_str = serde_json::to_string(&ruleset).unwrap();
+        let back: PermissionRuleset = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(ruleset, back);
+    }
+
+    #[test]
+    fn session_time_with_compacting_archived() {
+        let time = SessionTime {
+            created: 1_700_000_000.0,
+            updated: 1_700_001_000.0,
+            compacting: Some(1_700_002_000.0),
+            archived: Some(1_700_003_000.0),
+        };
+        let json_str = serde_json::to_string(&time).unwrap();
+        assert!(json_str.contains("compacting"));
+        assert!(json_str.contains("archived"));
+        let back: SessionTime = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(time, back);
+    }
+
+    #[test]
+    fn session_time_without_compacting_archived() {
+        let time = SessionTime {
+            created: 1_700_000_000.0,
+            updated: 1_700_001_000.0,
+            compacting: None,
+            archived: None,
+        };
+        let json_str = serde_json::to_string(&time).unwrap();
+        assert!(!json_str.contains("compacting"));
+        assert!(!json_str.contains("archived"));
+        let back: SessionTime = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(time, back);
+    }
+
+    #[test]
+    fn session_from_spec_compliant_json() {
+        let json = json!({
+            "id": "ses_abc123",
+            "slug": "my-session",
+            "projectID": "proj_xyz",
+            "directory": "/home/user/project",
+            "title": "Full Session",
+            "version": "2",
+            "time": {
+                "created": 1_700_000_000.0,
+                "updated": 1_700_001_000.0,
+                "compacting": 1_700_002_000.0,
+                "archived": 1_700_003_000.0
+            },
+            "parentID": "ses_parent",
+            "summary": {
+                "additions": 10.0,
+                "deletions": 3.0,
+                "files": 2.0,
+                "diffs": [
+                    {
+                        "file": "src/main.rs",
+                        "before": "old code",
+                        "after": "new code",
+                        "additions": 5.0,
+                        "deletions": 2.0,
+                        "status": "added"
+                    }
+                ]
+            },
+            "share": { "url": "https://example.com/share/abc" },
+            "permission": [
+                { "permission": "file:write", "pattern": "src/**", "action": "allow" }
+            ],
+            "revert": {
+                "messageID": "msg_001",
+                "diff": "some diff",
+                "partID": "part_001",
+                "snapshot": "snap"
+            }
+        });
+        let session: Session = serde_json::from_value(json).unwrap();
+        assert_eq!(session.id, "ses_abc123");
+        assert_eq!(session.slug, "my-session");
+        assert_eq!(session.project_id, "proj_xyz");
+        assert_eq!(session.directory, "/home/user/project");
+        assert_eq!(session.time.compacting, Some(1_700_002_000.0));
+        assert_eq!(session.time.archived, Some(1_700_003_000.0));
+        assert!(session.summary.is_some());
+        let summary = session.summary.unwrap();
+        assert_eq!(summary.additions, 10.0);
+        assert_eq!(summary.diffs.as_ref().unwrap().len(), 1);
+        assert_eq!(summary.diffs.as_ref().unwrap()[0].status, Some(FileDiffStatus::Added));
+        assert!(session.permission.is_some());
+        assert_eq!(session.permission.unwrap().len(), 1);
+        assert_eq!(session.parent_id.as_deref(), Some("ses_parent"));
+    }
+
+    #[test]
+    fn session_deserialize_without_new_fields() {
+        // Ensures backwards compatibility: old JSON without slug/projectID/directory still works.
+        let json = json!({
+            "id": "ses_old",
+            "title": "Old Session",
+            "version": "1",
+            "time": { "created": 100.0, "updated": 200.0 }
+        });
+        let session: Session = serde_json::from_value(json).unwrap();
+        assert_eq!(session.id, "ses_old");
+        assert_eq!(session.slug, "");
+        assert_eq!(session.project_id, "");
+        assert_eq!(session.directory, "");
+        assert!(session.summary.is_none());
+        assert!(session.permission.is_none());
+        assert!(session.time.compacting.is_none());
+        assert!(session.time.archived.is_none());
+    }
+
+    #[test]
+    fn assistant_message_from_spec_compliant_json() {
+        let json = json!({
+            "id": "msg_spec",
+            "sessionID": "sess_spec",
+            "role": "assistant",
+            "parentID": "msg_parent_spec",
+            "modelID": "gpt-4o",
+            "providerID": "openai",
+            "mode": "code",
+            "agent": "coder",
+            "path": { "cwd": "/project", "root": "/project" },
+            "cost": 0.005,
+            "time": { "created": 1_700_000_000.0, "completed": 1_700_000_010.0 },
+            "tokens": {
+                "total": 1500,
+                "input": 1000,
+                "output": 400,
+                "reasoning": 100,
+                "cache": { "read": 500, "write": 200 }
+            }
+        });
+        let msg: AssistantMessage = serde_json::from_value(json).unwrap();
+        assert_eq!(msg.id, "msg_spec");
+        assert_eq!(msg.parent_id, "msg_parent_spec");
+        assert_eq!(msg.agent, "coder");
+        assert_eq!(msg.tokens.total, 1500);
+        assert_eq!(msg.tokens.input, 1000);
+        assert_eq!(msg.tokens.output, 400);
+        assert_eq!(msg.tokens.reasoning, 100);
+        assert_eq!(msg.tokens.cache.read, 500);
+        assert_eq!(msg.tokens.cache.write, 200);
+        assert!(msg.variant.is_none());
+        assert!(msg.finish.is_none());
+        assert!(msg.structured.is_none());
+    }
+
+    #[test]
+    fn assistant_message_with_optional_fields_populated() {
+        let json = json!({
+            "id": "msg_opt",
+            "sessionID": "sess_opt",
+            "parentID": "msg_p",
+            "modelID": "claude-3-opus",
+            "providerID": "anthropic",
+            "mode": "code",
+            "agent": "reviewer",
+            "path": { "cwd": "/home", "root": "/home" },
+            "cost": 0.01,
+            "time": { "created": 1_700_000_000.0 },
+            "tokens": {
+                "total": 500,
+                "input": 300,
+                "output": 150,
+                "reasoning": 50,
+                "cache": { "read": 100, "write": 50 }
+            },
+            "variant": "v2",
+            "finish": "stop",
+            "structured": { "key": "value" }
+        });
+        let msg: AssistantMessage = serde_json::from_value(json).unwrap();
+        assert_eq!(msg.variant.as_deref(), Some("v2"));
+        assert_eq!(msg.finish.as_deref(), Some("stop"));
+        assert_eq!(msg.structured.as_ref().unwrap()["key"], "value");
+        assert_eq!(msg.parent_id, "msg_p");
+        assert_eq!(msg.agent, "reviewer");
+        assert_eq!(msg.tokens.total, 500);
+    }
+
+    // -- UserMessage new fields --
+
+    #[test]
+    fn user_message_from_spec_json() {
+        let json = json!({
+            "id": "msg_u_spec",
+            "sessionID": "sess_spec",
+            "role": "user",
+            "time": { "created": 1_700_000_000.0 },
+            "agent": "coder",
+            "model": { "providerID": "openai", "modelID": "gpt-4o" },
+            "format": { "type": "text" },
+            "summary": {
+                "title": "Summary Title",
+                "body": "Summary body text",
+                "diffs": [
+                    {
+                        "file": "src/main.rs",
+                        "before": "old",
+                        "after": "new",
+                        "additions": 1.0,
+                        "deletions": 1.0,
+                        "status": "modified"
+                    }
+                ]
+            },
+            "system": "Be concise.",
+            "tools": { "bash": true, "read_file": false },
+            "variant": "v2"
+        });
+        let msg: UserMessage = serde_json::from_value(json).unwrap();
+        assert_eq!(msg.id, "msg_u_spec");
+        assert_eq!(msg.session_id, "sess_spec");
+        assert_eq!(msg.agent, "coder");
+        assert_eq!(msg.model.provider_id, "openai");
+        assert_eq!(msg.model.model_id, "gpt-4o");
+        assert!(matches!(msg.format, Some(OutputFormat::Text)));
+        let summary = msg.summary.unwrap();
+        assert_eq!(summary.title.as_deref(), Some("Summary Title"));
+        assert_eq!(summary.body.as_deref(), Some("Summary body text"));
+        assert_eq!(summary.diffs.len(), 1);
+        assert_eq!(msg.system.as_deref(), Some("Be concise."));
+        let tools = msg.tools.unwrap();
+        assert_eq!(tools.get("bash"), Some(&true));
+        assert_eq!(tools.get("read_file"), Some(&false));
+        assert_eq!(msg.variant.as_deref(), Some("v2"));
+    }
+
+    #[test]
+    fn user_message_with_output_format() {
+        // Text variant
+        let msg_text = UserMessage {
+            id: "msg_fmt_text".into(),
+            session_id: "sess_001".into(),
+            time: UserMessageTime { created: 1_700_000_000.0 },
+            agent: "coder".into(),
+            model: UserMessageModel { provider_id: "openai".into(), model_id: "gpt-4o".into() },
+            format: Some(OutputFormat::Text),
+            summary: None,
+            system: None,
+            tools: None,
+            variant: None,
+        };
+        let json_str = serde_json::to_string(&msg_text).unwrap();
+        assert!(json_str.contains("\"type\":\"text\""));
+        let back: UserMessage = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(msg_text, back);
+
+        // JsonSchema variant
+        let msg_schema = UserMessage {
+            id: "msg_fmt_schema".into(),
+            session_id: "sess_001".into(),
+            time: UserMessageTime { created: 1_700_000_000.0 },
+            agent: "coder".into(),
+            model: UserMessageModel {
+                provider_id: "anthropic".into(),
+                model_id: "claude-3-opus".into(),
+            },
+            format: Some(OutputFormat::JsonSchema {
+                schema: json!({ "type": "object", "properties": { "answer": { "type": "string" } } }),
+                retry_count: Some(3),
+            }),
+            summary: None,
+            system: None,
+            tools: None,
+            variant: None,
+        };
+        let json_str = serde_json::to_string(&msg_schema).unwrap();
+        assert!(json_str.contains("json_schema"));
+        assert!(json_str.contains("retryCount"));
+        let back: UserMessage = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(msg_schema, back);
+    }
+
+    #[test]
+    fn user_message_with_summary() {
+        let msg = UserMessage {
+            id: "msg_sum".into(),
+            session_id: "sess_001".into(),
+            time: UserMessageTime { created: 1_700_000_000.0 },
+            agent: "reviewer".into(),
+            model: UserMessageModel { provider_id: "openai".into(), model_id: "gpt-4o".into() },
+            format: None,
+            summary: Some(UserMessageSummary {
+                title: Some("Refactored main".into()),
+                body: Some("Cleaned up imports".into()),
+                diffs: vec![FileDiff {
+                    file: "src/main.rs".into(),
+                    before: "use old;".into(),
+                    after: "use new;".into(),
+                    additions: 1.0,
+                    deletions: 1.0,
+                    status: Some(FileDiffStatus::Modified),
+                }],
+            }),
+            system: None,
+            tools: None,
+            variant: None,
+        };
+        let json_str = serde_json::to_string(&msg).unwrap();
+        assert!(json_str.contains("Refactored main"));
+        assert!(json_str.contains("Cleaned up imports"));
+        let back: UserMessage = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(msg, back);
+    }
+
+    // -- New Part variant round-trips --
+
+    #[test]
+    fn part_subtask_round_trip() {
+        let part = Part::Subtask(SubtaskPart {
+            id: "p_sub_001".into(),
+            session_id: "sess_001".into(),
+            message_id: "msg_a001".into(),
+            prompt: "Fix the bug".into(),
+            description: "Fix the null pointer bug in parser".into(),
+            agent: "coder".into(),
+            model: Some(SubtaskPartModel {
+                provider_id: "openai".into(),
+                model_id: "gpt-4o".into(),
+            }),
+            command: Some("cargo test".into()),
+        });
+        let json_str = serde_json::to_string(&part).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(v["type"], "subtask");
+        assert_eq!(v["sessionID"], "sess_001");
+        assert_eq!(v["messageID"], "msg_a001");
+        let back: Part = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(part, back);
+
+        // Minimal (no model, no command)
+        let minimal = Part::Subtask(SubtaskPart {
+            id: "p_sub_002".into(),
+            session_id: "sess_001".into(),
+            message_id: "msg_a001".into(),
+            prompt: "Do it".into(),
+            description: "desc".into(),
+            agent: "coder".into(),
+            model: None,
+            command: None,
+        });
+        let json_str = serde_json::to_string(&minimal).unwrap();
+        assert!(!json_str.contains("model"));
+        assert!(!json_str.contains("command"));
+        let back: Part = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(minimal, back);
+    }
+
+    #[test]
+    fn part_reasoning_round_trip() {
+        let part = Part::Reasoning(ReasoningPart {
+            id: "p_reason_001".into(),
+            session_id: "sess_001".into(),
+            message_id: "msg_a001".into(),
+            text: "Let me think about this...".into(),
+            metadata: Some(HashMap::from([("key".into(), json!("value"))])),
+            time: ReasoningPartTime { start: 1_700_000_200.0, end: Some(1_700_000_201.0) },
+        });
+        let json_str = serde_json::to_string(&part).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(v["type"], "reasoning");
+        assert_eq!(v["sessionID"], "sess_001");
+        assert_eq!(v["messageID"], "msg_a001");
+        let back: Part = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(part, back);
+
+        // Minimal (no metadata, no end time)
+        let minimal = Part::Reasoning(ReasoningPart {
+            id: "p_reason_002".into(),
+            session_id: "sess_001".into(),
+            message_id: "msg_a001".into(),
+            text: "thinking".into(),
+            metadata: None,
+            time: ReasoningPartTime { start: 1_700_000_200.0, end: None },
+        });
+        let json_str = serde_json::to_string(&minimal).unwrap();
+        assert!(!json_str.contains("metadata"));
+        let back: Part = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(minimal, back);
+    }
+
+    #[test]
+    fn part_agent_round_trip() {
+        let part = Part::Agent(AgentPart {
+            id: "p_agent_001".into(),
+            session_id: "sess_001".into(),
+            message_id: "msg_a001".into(),
+            name: "coder".into(),
+            source: Some(AgentPartSource {
+                value: "some source content".into(),
+                start: 0,
+                end: 42,
+            }),
+        });
+        let json_str = serde_json::to_string(&part).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(v["type"], "agent");
+        assert_eq!(v["sessionID"], "sess_001");
+        assert_eq!(v["messageID"], "msg_a001");
+        let back: Part = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(part, back);
+
+        // Minimal (no source)
+        let minimal = Part::Agent(AgentPart {
+            id: "p_agent_002".into(),
+            session_id: "sess_001".into(),
+            message_id: "msg_a001".into(),
+            name: "reviewer".into(),
+            source: None,
+        });
+        let json_str = serde_json::to_string(&minimal).unwrap();
+        assert!(!json_str.contains("source"));
+        let back: Part = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(minimal, back);
+    }
+
+    #[test]
+    fn part_compaction_round_trip() {
+        let part = Part::Compaction(CompactionPart {
+            id: "p_compact_001".into(),
+            session_id: "sess_001".into(),
+            message_id: "msg_a001".into(),
+            auto: true,
+        });
+        let json_str = serde_json::to_string(&part).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(v["type"], "compaction");
+        assert_eq!(v["sessionID"], "sess_001");
+        assert_eq!(v["messageID"], "msg_a001");
+        assert_eq!(v["auto"], true);
+        let back: Part = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(part, back);
+
+        // auto = false
+        let part_false = Part::Compaction(CompactionPart {
+            id: "p_compact_002".into(),
+            session_id: "sess_001".into(),
+            message_id: "msg_a001".into(),
+            auto: false,
+        });
+        let json_str = serde_json::to_string(&part_false).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(v["auto"], false);
+        let back: Part = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(part_false, back);
+    }
+
+    #[test]
+    fn part_retry_round_trip() {
+        let part = Part::Retry(RetryPart {
+            id: "p_retry_001".into(),
+            session_id: "sess_001".into(),
+            message_id: "msg_a001".into(),
+            attempt: 2.0,
+            error: json!({ "message": "rate limited", "code": 429 }),
+            time: RetryPartTime { created: 1_700_000_200.0 },
+        });
+        let json_str = serde_json::to_string(&part).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(v["type"], "retry");
+        assert_eq!(v["sessionID"], "sess_001");
+        assert_eq!(v["messageID"], "msg_a001");
+        assert_eq!(v["attempt"], 2.0);
+        let back: Part = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(part, back);
+    }
+
+    #[test]
+    fn output_format_round_trip() {
+        // Text
+        let text = OutputFormat::Text;
+        let json_str = serde_json::to_string(&text).unwrap();
+        let back: OutputFormat = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(text, back);
+
+        // JsonSchema without retry_count
+        let schema_no_retry =
+            OutputFormat::JsonSchema { schema: json!({ "type": "string" }), retry_count: None };
+        let json_str = serde_json::to_string(&schema_no_retry).unwrap();
+        assert!(!json_str.contains("retryCount"));
+        let back: OutputFormat = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(schema_no_retry, back);
+
+        // JsonSchema with retry_count
+        let schema_retry =
+            OutputFormat::JsonSchema { schema: json!({ "type": "object" }), retry_count: Some(2) };
+        let json_str = serde_json::to_string(&schema_retry).unwrap();
+        assert!(json_str.contains("retryCount"));
+        let back: OutputFormat = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(schema_retry, back);
     }
 }

@@ -99,46 +99,84 @@ pub struct Experimental {
 // ---------------------------------------------------------------------------
 
 /// Keybinding configuration mirroring the JS SDK's `KeybindsConfig`.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct KeybindsConfig {
-    pub app_exit: String,
-    pub app_help: String,
-    pub editor_open: String,
-    pub file_close: String,
-    pub file_diff_toggle: String,
-    pub file_list: String,
-    pub file_search: String,
-    pub input_clear: String,
-    pub input_newline: String,
-    pub input_paste: String,
-    pub input_submit: String,
-    pub leader: String,
-    pub messages_copy: String,
-    pub messages_first: String,
-    pub messages_half_page_down: String,
-    pub messages_half_page_up: String,
-    pub messages_last: String,
-    pub messages_layout_toggle: String,
-    pub messages_next: String,
-    pub messages_page_down: String,
-    pub messages_page_up: String,
-    pub messages_previous: String,
-    pub messages_redo: String,
-    pub messages_revert: String,
-    pub messages_undo: String,
-    pub model_list: String,
-    pub project_init: String,
-    pub session_compact: String,
-    pub session_export: String,
-    pub session_interrupt: String,
-    pub session_list: String,
-    pub session_new: String,
-    pub session_share: String,
-    pub session_unshare: String,
-    pub switch_mode: String,
-    pub switch_mode_reverse: String,
-    pub theme_list: String,
-    pub tool_details: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_exit: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_help: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub editor_open: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_close: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_diff_toggle: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_list: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_search: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_clear: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_newline: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_paste: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_submit: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub leader: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub messages_copy: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub messages_first: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub messages_half_page_down: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub messages_half_page_up: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub messages_last: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub messages_layout_toggle: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub messages_next: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub messages_page_down: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub messages_page_up: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub messages_previous: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub messages_redo: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub messages_revert: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub messages_undo: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_list: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_init: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_compact: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_export: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_interrupt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_list: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_new: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_share: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_unshare: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub switch_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub switch_mode_reverse: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme_list: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_details: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -366,8 +404,9 @@ pub struct Config {
     pub autoshare: Option<bool>,
 
     /// Whether to auto-update the application.
+    /// Can be a boolean or the string "notify" to show update notifications.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub autoupdate: Option<bool>,
+    pub autoupdate: Option<serde_json::Value>,
 
     /// List of disabled provider identifiers.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -508,44 +547,44 @@ mod tests {
     #[test]
     fn keybinds_config_round_trip() {
         let kb = KeybindsConfig {
-            app_exit: "ctrl+q".into(),
-            app_help: "ctrl+h".into(),
-            editor_open: "ctrl+e".into(),
-            file_close: "ctrl+w".into(),
-            file_diff_toggle: "ctrl+d".into(),
-            file_list: "ctrl+l".into(),
-            file_search: "ctrl+f".into(),
-            input_clear: "ctrl+u".into(),
-            input_newline: "shift+enter".into(),
-            input_paste: "ctrl+v".into(),
-            input_submit: "enter".into(),
-            leader: "ctrl+space".into(),
-            messages_copy: "ctrl+c".into(),
-            messages_first: "home".into(),
-            messages_half_page_down: "ctrl+d".into(),
-            messages_half_page_up: "ctrl+u".into(),
-            messages_last: "end".into(),
-            messages_layout_toggle: "ctrl+t".into(),
-            messages_next: "ctrl+n".into(),
-            messages_page_down: "pagedown".into(),
-            messages_page_up: "pageup".into(),
-            messages_previous: "ctrl+p".into(),
-            messages_redo: "ctrl+y".into(),
-            messages_revert: "ctrl+r".into(),
-            messages_undo: "ctrl+z".into(),
-            model_list: "ctrl+m".into(),
-            project_init: "ctrl+i".into(),
-            session_compact: "ctrl+k".into(),
-            session_export: "ctrl+shift+e".into(),
-            session_interrupt: "escape".into(),
-            session_list: "ctrl+s".into(),
-            session_new: "ctrl+shift+n".into(),
-            session_share: "ctrl+shift+s".into(),
-            session_unshare: "ctrl+shift+u".into(),
-            switch_mode: "tab".into(),
-            switch_mode_reverse: "shift+tab".into(),
-            theme_list: "ctrl+shift+t".into(),
-            tool_details: "ctrl+shift+d".into(),
+            app_exit: Some("ctrl+q".into()),
+            app_help: Some("ctrl+h".into()),
+            editor_open: Some("ctrl+e".into()),
+            file_close: Some("ctrl+w".into()),
+            file_diff_toggle: Some("ctrl+d".into()),
+            file_list: Some("ctrl+l".into()),
+            file_search: Some("ctrl+f".into()),
+            input_clear: Some("ctrl+u".into()),
+            input_newline: Some("shift+enter".into()),
+            input_paste: Some("ctrl+v".into()),
+            input_submit: Some("enter".into()),
+            leader: Some("ctrl+space".into()),
+            messages_copy: Some("ctrl+c".into()),
+            messages_first: Some("home".into()),
+            messages_half_page_down: Some("ctrl+d".into()),
+            messages_half_page_up: Some("ctrl+u".into()),
+            messages_last: Some("end".into()),
+            messages_layout_toggle: Some("ctrl+t".into()),
+            messages_next: Some("ctrl+n".into()),
+            messages_page_down: Some("pagedown".into()),
+            messages_page_up: Some("pageup".into()),
+            messages_previous: Some("ctrl+p".into()),
+            messages_redo: Some("ctrl+y".into()),
+            messages_revert: Some("ctrl+r".into()),
+            messages_undo: Some("ctrl+z".into()),
+            model_list: Some("ctrl+m".into()),
+            project_init: Some("ctrl+i".into()),
+            session_compact: Some("ctrl+k".into()),
+            session_export: Some("ctrl+shift+e".into()),
+            session_interrupt: Some("escape".into()),
+            session_list: Some("ctrl+s".into()),
+            session_new: Some("ctrl+shift+n".into()),
+            session_share: Some("ctrl+shift+s".into()),
+            session_unshare: Some("ctrl+shift+u".into()),
+            switch_mode: Some("tab".into()),
+            switch_mode_reverse: Some("shift+tab".into()),
+            theme_list: Some("ctrl+shift+t".into()),
+            tool_details: Some("ctrl+shift+d".into()),
         };
         let json_str = serde_json::to_string(&kb).unwrap();
         let back: KeybindsConfig = serde_json::from_str(&json_str).unwrap();
@@ -581,7 +620,7 @@ mod tests {
                 },
             )])),
             autoshare: Some(false),
-            autoupdate: Some(true),
+            autoupdate: Some(serde_json::Value::Bool(true)),
             disabled_providers: Some(vec!["azure".into()]),
             experimental: Some(Experimental {
                 hook: Some(Hook {
@@ -729,8 +768,11 @@ mod tests {
 
     #[test]
     fn config_minimal_partial_fields() {
-        let cfg =
-            Config { theme: Some("dark".into()), autoupdate: Some(false), ..Default::default() };
+        let cfg = Config {
+            theme: Some("dark".into()),
+            autoupdate: Some(serde_json::Value::Bool(false)),
+            ..Default::default()
+        };
         let json_str = serde_json::to_string(&cfg).unwrap();
         // Only the two set fields should appear
         assert!(json_str.contains("theme"));

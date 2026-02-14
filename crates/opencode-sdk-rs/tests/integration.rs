@@ -1,4 +1,8 @@
-use opencode_sdk_rs::{Opencode, config::ClientOptions, resources::file::FileReadParams};
+use opencode_sdk_rs::{
+    Opencode,
+    config::ClientOptions,
+    resources::file::{FileListParams, FileReadParams},
+};
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
     matchers::{method, path, query_param},
@@ -69,14 +73,22 @@ async fn test_app_providers() {
         .and(path("/config/providers"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "default": { "mode": "anthropic/claude-sonnet" },
-            "providers": []
+            "providers": [{
+                "id": "anthropic",
+                "name": "Anthropic",
+                "source": "env",
+                "env": ["ANTHROPIC_API_KEY"],
+                "options": {},
+                "models": {}
+            }]
         })))
         .mount(&server)
         .await;
 
     let client = client_for(&server);
     let prov = client.app().providers(None).await.unwrap();
-    assert!(prov.providers.is_empty());
+    assert_eq!(prov.providers.len(), 1);
+    assert_eq!(prov.providers[0].id, "anthropic");
 }
 
 // ---------------------------------------------------------------------------
@@ -90,6 +102,9 @@ async fn test_session_create() {
         .and(path("/session"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "id": "sess-1",
+            "slug": "test-session",
+            "projectID": "proj-1",
+            "directory": "/tmp/test",
             "time": { "created": 100.0, "updated": 200.0 },
             "title": "Test Session",
             "version": "1.0"
@@ -109,8 +124,8 @@ async fn test_session_list() {
     Mock::given(method("GET"))
         .and(path("/session"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
-            { "id": "s1", "time": { "created": 1.0, "updated": 2.0 }, "title": "S1", "version": "1" },
-            { "id": "s2", "time": { "created": 3.0, "updated": 4.0 }, "title": "S2", "version": "1" }
+            { "id": "s1", "slug": "s1", "projectID": "p1", "directory": "/d1", "time": { "created": 1.0, "updated": 2.0 }, "title": "S1", "version": "1" },
+            { "id": "s2", "slug": "s2", "projectID": "p2", "directory": "/d2", "time": { "created": 3.0, "updated": 4.0 }, "title": "S2", "version": "1" }
         ])))
         .mount(&server)
         .await;
@@ -143,8 +158,10 @@ async fn test_session_chat_accepts_missing_assistant_fields() {
             "info": {
                 "role": "assistant",
                 "sessionID": "sess-1",
+                "parentID": "",
+                "agent": "",
                 "time": { "created": 123.0 },
-                "tokens": { "cache": { "read": 0, "write": 0 }, "input": 0, "output": 0, "reasoning": 0 }
+                "tokens": { "cache": { "read": 0, "write": 0 }, "input": 0, "output": 0, "reasoning": 0, "total": 0 }
             },
             "parts": []
         })))
@@ -153,12 +170,17 @@ async fn test_session_chat_accepts_missing_assistant_fields() {
 
     let client = client_for(&server);
     let params = opencode_sdk_rs::resources::session::SessionChatParams {
-        model_id: "gpt-4o".to_owned(),
         parts: vec![],
-        provider_id: "openai".to_owned(),
+        model: Some(opencode_sdk_rs::resources::session::SessionChatModel {
+            provider_id: "openai".to_owned(),
+            model_id: "gpt-4o".to_owned(),
+        }),
         message_id: None,
-        mode: None,
+        agent: None,
+        no_reply: None,
+        format: None,
         system: None,
+        variant: None,
         tools: None,
     };
 
@@ -187,29 +209,45 @@ async fn test_session_chat_accepts_unknown_part_variant() {
                 "modelID": "gpt-4o",
                 "providerID": "openai",
                 "sessionID": "sess-1",
+                "parentID": "",
+                "agent": "",
                 "path": { "cwd": ".", "root": "." },
                 "system": [],
                 "time": { "created": 123.0 },
-                "tokens": { "cache": { "read": 0, "write": 0 }, "input": 0, "output": 0, "reasoning": 0 }
+                "tokens": { "cache": { "read": 0, "write": 0 }, "input": 0, "output": 0, "reasoning": 0, "total": 0 }
             },
-            "parts": [{ "type": "reasoning", "id": "p-1", "text": "thinking..." }]
+            "parts": [{ "type": "reasoning", "id": "p-1", "sessionID": "sess-1", "messageID": "msg-1", "text": "thinking...", "time": { "start": 1700000000.0 } }]
         })))
         .mount(&server)
         .await;
 
     let client = client_for(&server);
     let params = opencode_sdk_rs::resources::session::SessionChatParams {
-        model_id: "gpt-4o".to_owned(),
         parts: vec![],
-        provider_id: "openai".to_owned(),
+        model: Some(opencode_sdk_rs::resources::session::SessionChatModel {
+            provider_id: "openai".to_owned(),
+            model_id: "gpt-4o".to_owned(),
+        }),
         message_id: None,
-        mode: None,
+        agent: None,
+        no_reply: None,
+        format: None,
         system: None,
+        variant: None,
         tools: None,
     };
 
     let resp = client.session().chat("sess-1", &params, None).await.unwrap();
     assert_eq!(resp.parts.len(), 1);
+    match &resp.parts[0] {
+        opencode_sdk_rs::resources::session::Part::Reasoning(r) => {
+            assert_eq!(r.id, "p-1");
+            assert_eq!(r.text, "thinking...");
+            assert_eq!(r.session_id, "sess-1");
+            assert_eq!(r.message_id, "msg-1");
+        }
+        other => panic!("expected Part::Reasoning, got {other:?}"),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -220,11 +258,11 @@ async fn test_session_chat_accepts_unknown_part_variant() {
 async fn test_file_read() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(path("/file"))
+        .and(path("/file/content"))
         .and(query_param("path", "src/main.rs"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "content": "fn main() {}",
-            "type": "raw"
+            "type": "text"
         })))
         .mount(&server)
         .await;
@@ -233,6 +271,27 @@ async fn test_file_read() {
     let resp =
         client.file().read(&FileReadParams { path: "src/main.rs".to_owned() }).await.unwrap();
     assert_eq!(resp.content, "fn main() {}");
+}
+
+#[tokio::test]
+async fn test_file_list() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/file"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            { "name": "main.rs", "path": "src/main.rs", "absolute": "/home/user/project/src/main.rs", "type": "file", "ignored": false },
+            { "name": "target", "path": "target", "absolute": "/home/user/project/target", "type": "directory", "ignored": true }
+        ])))
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server);
+    let params = FileListParams { path: ".".into() };
+    let files = client.file().list(Some(&params)).await.unwrap();
+    assert_eq!(files.len(), 2);
+    assert_eq!(files[0].name, "main.rs");
+    assert!(!files[0].ignored);
+    assert!(files[1].ignored);
 }
 
 #[tokio::test]
@@ -271,7 +330,7 @@ async fn test_config_get() {
     let client = client_for(&server);
     let config = client.config().get(None).await.unwrap();
     assert_eq!(config.theme.as_deref(), Some("dark"));
-    assert_eq!(config.autoupdate, Some(true));
+    assert_eq!(config.autoupdate, Some(serde_json::Value::Bool(true)));
 }
 
 // ---------------------------------------------------------------------------

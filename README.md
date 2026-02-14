@@ -90,30 +90,59 @@ let providers = client.app().providers(None).await?;
 ### Session
 
 ```rust
-use opencode_sdk_rs::resources::SessionChatParams;
+use opencode_sdk_rs::resources::session::{
+    SessionChatParams, SessionChatModel, PartInput, TextPartInput,
+};
 
 // Create a new session
-let session = client.session().create().await?;
+let session = client.session().create(None).await?;
 
 // Send a message
 let params = SessionChatParams {
-    message: "Hello, OpenCode!".to_string(),
-    ..Default::default()
+    parts: vec![PartInput::Text(TextPartInput {
+        text: "Hello, OpenCode!".into(),
+        id: None,
+        synthetic: None,
+        ignored: None,
+        time: None,
+        metadata: None,
+    })],
+    model: Some(SessionChatModel {
+        provider_id: "anthropic".into(),
+        model_id: "claude-sonnet".into(),
+    }),
+    message_id: None,
+    agent: None,
+    no_reply: None,
+    format: None,
+    system: None,
+    variant: None,
+    tools: None,
 };
-let response = client.session().chat(&session.id, params).await?;
+let response = client.session().chat(&session.id, &params, None).await?;
 
 // List all sessions
 let sessions = client.session().list(None).await?;
 
 // Delete a session
-client.session().delete(&session.id).await?;
+client.session().delete(&session.id, None).await?;
 ```
 
 ### File
 
 ```rust
-// Read a file
-let content = client.file().read(&file_path).await?;
+use opencode_sdk_rs::resources::file::FileReadParams;
+
+// List files in directory
+let files = client.file().list().await?;
+for node in &files {
+    println!("{}: {:?}", node.path, node.node_type);
+}
+
+// Read file content
+let content = client.file().read(&FileReadParams {
+    path: "src/main.rs".into(),
+}).await?;
 
 // Get file status
 let files = client.file().status().await?;
@@ -241,7 +270,25 @@ cargo test
 
 # Run with coverage
 cargo tarpaulin --all-features --workspace
+
+# Run OpenAPI contract tests (requires Node.js for Prism)
+just test-prism
 ```
+
+#### OpenAPI Contract Testing with Prism
+
+The SDK includes [Stoplight Prism](https://stoplight.io/open-source/prism)-based integration tests that validate all requests conform to `docs/openapi.json`. These tests require Node.js:
+
+```bash
+# Install Prism (one-time)
+npm install
+
+# Run Prism contract tests
+just test-prism
+```
+
+The `test-prism` recipe starts a Prism mock server, runs the contract tests, and shuts down
+Prism automatically. Tests skip gracefully when `PRISM_URL` is not set.
 
 ### Linting
 

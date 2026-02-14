@@ -24,13 +24,13 @@ http = "1.4.0"
 
 # Streaming
 bytes = "1.11.1"
-pin-project-lite = "0.2"
+pin-project-lite = "0.2.16"
 
 # Observability
 tracing = "0.1.44"
 
 # Testing
-wiremock = "0.6"
+wiremock = "0.6.5"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }

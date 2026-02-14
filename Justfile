@@ -41,6 +41,10 @@ check:
 check-cn:
   rg --line-number --column "\p{Han}"
 
+# Run Prism-based OpenAPI contract tests
+test-prism:
+  ./scripts/prism-test.sh
+
 # Full CI check
 ci: lint test build
 

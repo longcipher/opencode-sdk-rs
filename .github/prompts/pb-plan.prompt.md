@@ -289,7 +289,16 @@ Please review the design and tasks. When ready, run /pb-build <feature-name> to 
 
 > How modules work together. Mock strategies.
 
-### 5.3 Validation Rules
+### 5.3 Critical Path Verification (The "Harness")
+
+> Define the exact command(s) or script(s) that prove this feature works end-to-end. The pb-build agent will use these to verify the final result.
+
+| Verification Step | Command | Success Criteria |
+| :--- | :--- | :--- |
+| **VP-01** | `[e.g., pytest tests/ -v]` | `[e.g., "All tests pass"]` |
+| **VP-02** | `[e.g., curl http://localhost:8000/health]` | `[e.g., "Response code 200"]` |
+
+### 5.4 Validation Rules
 
 | Test Case ID | Action | Expected Outcome | Verification Method |
 | :--- | :--- | :--- | :--- |

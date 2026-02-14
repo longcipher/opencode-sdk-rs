@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "devDependencies": {
+    "@stoplight/prism-cli": "^5.14.2"
+  }
+}
