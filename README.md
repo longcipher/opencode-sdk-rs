@@ -23,7 +23,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-opencode-sdk-rs = "0.1.0"
+opencode-sdk-rs = "0.2.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 ```
 
